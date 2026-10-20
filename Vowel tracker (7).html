@@ -1,0 +1,1046 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Vowel tracker</title>
+    <style>
+      :root {
+        --bg: #fff;
+        --fg: #141413;
+        --mut: #6b6a65;
+        --line: #e1e0d9;
+        --card: #f5f4ef;
+        --acc: #2a78d6;
+        --rnd: #eb6834;
+        box-sizing: border-box;
+        padding: env(safe-area-inset-top, 0px) 14px env(safe-area-inset-bottom, 0px);
+      }
+      @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+          --bg: #1a1a19;
+          --fg: #f0efec;
+          --mut: #a3a29a;
+          --line: #2c2c2a;
+          --card: #242422;
+          --acc: #3987e5;
+          --rnd: #d95926;
+        }
+      }
+      :root[data-theme="dark"] {
+        --bg: #1a1a19;
+        --fg: #f0efec;
+        --mut: #a3a29a;
+        --line: #2c2c2a;
+        --card: #242422;
+        --acc: #3987e5;
+        --rnd: #d95926;
+      }
+      html {
+        scroll-padding-top: env(safe-area-inset-top, 0px);
+      }
+      body {
+        margin: 0 auto;
+        max-width: 520px;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          15px/1.5 system-ui,
+          -apple-system,
+          sans-serif;
+      }
+      h1 {
+        font-size: 20px;
+        font-weight: 500;
+        margin: 14px 0 10px;
+      }
+      h2 {
+        font-size: 16px;
+        font-weight: 500;
+        margin: 18px 0 8px;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      button,
+      select,
+      input,
+      textarea {
+        font: inherit;
+        color: var(--fg);
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 8px 10px;
+        min-width: 0;
+      }
+      button {
+        flex: 1;
+        font-weight: 500;
+      }
+      canvas {
+        width: 100%;
+        aspect-ratio: 1;
+        display: block;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+      }
+      .note {
+        font-size: 12px;
+        color: var(--mut);
+        margin: 6px 0 10px;
+      }
+      .numbers {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        margin: 10px 0;
+      }
+      .tile {
+        background: var(--card);
+        border-radius: 8px;
+        padding: 8px 4px;
+        text-align: center;
+      }
+      .tile b {
+        display: block;
+        font-size: 22px;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+      }
+      .tile span {
+        font-size: 11px;
+        color: var(--mut);
+      }
+      .card {
+        background: var(--card);
+        border-radius: 12px;
+        padding: 12px 14px;
+        margin-bottom: 10px;
+      }
+      .big {
+        font-size: 34px;
+        line-height: 1.1;
+      }
+      .card p {
+        margin: 6px 0 0;
+        font-size: 14px;
+      }
+      .fields {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 6px;
+        margin-bottom: 8px;
+      }
+      .item {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .item b {
+        font-size: 22px;
+        min-width: 36px;
+      }
+      .item span {
+        flex: 1;
+        font-size: 12px;
+        color: var(--mut);
+      }
+      .item button {
+        flex: 0;
+        padding: 6px 8px;
+        font-size: 12px;
+      }
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        height: 70px;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Vowel tracker</h1>
+    <div class="row">
+      <button id="go">Start mic</button>
+      <select id="ceil" aria-label="Formant ceiling">
+        <option value="5000">Ceiling 5000 Hz</option>
+        <option value="5500">Ceiling 5500 Hz</option>
+      </select>
+    </div>
+    <p id="msg" style="font-size: 14px; margin: 0 0 10px">
+      1. Press Start mic. 2. Say a vowel and hold it. The blue dot shows where you are.
+    </p>
+
+    <div style="display: flex; align-items: center; gap: 8px; margin: 0 0 6px; font-size: 12px; color: var(--mut)">
+      <span>Volume</span>
+      <div
+        style="flex: 1; height: 10px; background: var(--card); border-radius: 5px; position: relative; overflow: hidden"
+      >
+        <div id="lv" style="height: 100%; width: 0"></div>
+        <i id="gl" style="position: absolute; left: 40%; top: 0; bottom: 0; width: 1px; background: var(--fg)"></i>
+      </div>
+      <span id="db" style="min-width: 48px; text-align: right">-- dB</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 12px; color: var(--mut)">
+      <span>Ignore sounds quieter than</span>
+      <input
+        type="range"
+        id="gate"
+        min="-70"
+        max="-10"
+        step="1"
+        value="-42"
+        style="flex: 1; padding: 0"
+        aria-label="Minimum volume in dB"
+      />
+      <b id="gv" style="min-width: 48px; text-align: right; color: var(--fg)">-42 dB</b>
+    </div>
+
+    <canvas id="cv" role="img" aria-label="Vowel graph: F2 across, F1 down, a line every 100 Hz"></canvas>
+    <div class="note">
+      Lines are 100 Hz apart (darker every 500 Hz). Blue dot: your voice now, with its exact F1 and F2 on the edges.
+      Orange letters: rounded vowels. Black letters: unrounded vowels. Faint letters: textbook averages. Bold letters
+      with a dot: vowels you saved. Dashed ring: the numbers in the form below.
+    </div>
+
+    <div class="numbers">
+      <div class="tile"><b id="v0">-</b><span>Pitch (F0)</span></div>
+      <div class="tile"><b id="v1">-</b><span>F1 height</span></div>
+      <div class="tile"><b id="v2">-</b><span>F2 front/back</span></div>
+      <div class="tile"><b id="v3">-</b><span>F3 lips</span></div>
+    </div>
+
+    <div class="card">
+      <div class="big" id="nv">-</div>
+      <p id="l1"></p>
+      <p id="l2"></p>
+      <p id="l3"></p>
+    </div>
+
+    <h2>Save a vowel</h2>
+    <div class="row">
+      <button id="cp">From my voice now</button>
+      <button id="ld">From an audio file</button>
+    </div>
+    <input type="file" id="clip" accept="audio/*" hidden />
+    <details class="note">
+      <summary>Paste a Praat formant table</summary>
+      <textarea
+        id="pt"
+        placeholder="Time_s F1_Hz F2_Hz F3_Hz F4_Hz&#10;4.239172 353.37 2148.69 2771.64 3623.84"
+      ></textarea>
+      <div class="row" style="margin-top: 6px"><button id="pb">Use these formants</button></div>
+    </details>
+    <div class="fields">
+      <input id="sy" placeholder="IPA symbol" />
+      <input id="nt" placeholder="note (optional)" style="grid-column: span 2" />
+      <input id="i1" type="number" placeholder="F1" />
+      <input id="i2" type="number" placeholder="F2" />
+      <input id="i3" type="number" placeholder="F3" />
+      <input id="i0" type="number" placeholder="F0 (optional)" />
+      <input id="i4" type="number" placeholder="F4 (optional)" />
+      <input id="i5" type="number" placeholder="F5 (optional)" />
+    </div>
+    <div class="row"><button id="sv">Save this vowel</button></div>
+
+    <h2>Your saved vowels</h2>
+    <div id="lib"></div>
+
+    <details class="note">
+      <summary>How the rounding percentage is worked out</summary>
+      Take a saved unrounded vowel U and its rounded partner R (for example [i] and [y]). For a sound with F2 and F3:
+      <br />A = (F2 - F2 of U) / (F2 of R - F2 of U) <br />B = (F3 - F3 of U) / (F3 of R - F3 of U) <br />Rounding = (A
+      + B) / 2, shown as a percentage. 0% is your unrounded vowel and 100% is your rounded one. It works because
+      rounding the lips lowers F2 and F3 together.
+    </details>
+    <details class="note">
+      <summary>Backup</summary>
+      <textarea id="io" aria-label="Saved vowels as text"></textarea>
+      <div class="row" style="margin-top: 6px">
+        <button id="ex">Show my vowels as text</button><button id="im">Add vowels from text</button>
+      </div>
+    </details>
+
+    <script>
+      // ============================================================
+      // SETTINGS: change these numbers to tune the page.
+      // ============================================================
+      const SETTINGS = {
+        minDb: -42, // sounds quieter than this (dB on the volume bar) are ignored. The slider changes it.
+        minLoudness: 0.001, // tiny absolute floor used when analysing audio files
+        pitchConfidence: 0.5, // 0 to 1: how clearly voiced a sound must be before it is measured
+        windowSeconds: 0.04, // length of sound analysed each time, in seconds
+        // [pre-emphasis, extra LPC poles]. Tried in order until three formants are found.
+        attempts: [
+          [0.8, 2],
+          [0.95, 4],
+          [0.99, 6],
+        ],
+        smoothFrames: 5, // average this many measurements so the dot is steadier
+        trailLength: 30, // how many past dot positions to draw
+        // Rounding cut-offs (fraction of the way from the unrounded vowel to the rounded one):
+        // below 1st = unrounded, below 2nd = slightly, below 3rd = partly, below 4th = fully, above = over-rounded
+        roundingCuts: [0.2, 0.45, 0.8, 1.2],
+        graph: { f2Min: 500, f2Max: 2600, f1Min: 100, f1Max: 1000, gridStep: 100 }, // gridStep: Hz between lines
+      };
+
+      // Textbook average formants: [F1, F2, rounded?]. Only used as faint reference letters.
+      const REF = {
+        i: [240, 2400, 0],
+        y: [235, 2100, 1],
+        e: [390, 2300, 0],
+        ø: [370, 1900, 1],
+        ɛ: [610, 1900, 0],
+        œ: [585, 1710, 1],
+        a: [850, 1610, 0],
+        ɶ: [820, 1530, 1],
+        ɑ: [750, 940, 0],
+        ɒ: [700, 760, 1],
+        ʌ: [600, 1170, 0],
+        ɔ: [500, 700, 1],
+        ɤ: [460, 1310, 0],
+        o: [360, 640, 1],
+        ɯ: [300, 1390, 0],
+        u: [250, 595, 1],
+      };
+      // Each unrounded vowel and its rounded partner.
+      const PAIR = {
+        i: "y",
+        y: "i",
+        e: "ø",
+        ø: "e",
+        ɛ: "œ",
+        œ: "ɛ",
+        a: "ɶ",
+        ɶ: "a",
+        ɑ: "ɒ",
+        ɒ: "ɑ",
+        ʌ: "ɔ",
+        ɔ: "ʌ",
+        ɤ: "o",
+        o: "ɤ",
+        ɯ: "u",
+        u: "ɯ",
+        ɪ: "ʏ",
+        ʏ: "ɪ",
+        ɨ: "ʉ",
+        ʉ: "ɨ",
+        ɘ: "ɵ",
+        ɵ: "ɘ",
+        ɜ: "ɞ",
+        ɞ: "ɜ",
+      };
+      const IPA_VOWELS = new Set("iyɨʉɯuɪʏʊeøɘɵɤoəɛœɜɞʌɔæɐaɶɑɒ".split(""));
+      const ROUNDED_VOWELS = new Set(["y", "ø", "œ", "ɶ", "ɒ", "ɔ", "o", "u", "ʉ", "ɵ", "ɞ", "ʏ", "ʊ"]);
+
+      // A symbol with marks on it (like ɪ̈) counts as its base letter. Returns null if it is not an IPA vowel.
+      function baseSymbol(sym) {
+        const stripped = sym.normalize("NFD").replace(/[\u02b0-\u02ff\u0300-\u036f]/g, "");
+        return IPA_VOWELS.has(stripped) ? stripped : null;
+      }
+      // true = rounded, false = unrounded, null = unknown symbol
+      function isRounded(sym) {
+        const base = baseSymbol(sym);
+        return base ? ROUNDED_VOWELS.has(base) : null;
+      }
+
+      const $ = (id) => document.getElementById(id);
+      const cv = $("cv"),
+        g = cv.getContext("2d");
+      let ctx,
+        an,
+        buf,
+        stream,
+        run = false,
+        fs = 10000;
+      let lastVoiced = 0,
+        recent = [],
+        held = [],
+        trail = [],
+        cur = null,
+        pitch = 0,
+        PRAAT = [],
+        LIB = [];
+      try {
+        LIB = JSON.parse(localStorage.getItem("vlib") || "[]");
+      } catch (e) {}
+      const store = () => {
+        try {
+          localStorage.setItem("vlib", JSON.stringify(LIB));
+        } catch (e) {}
+      };
+      const esc = (s) => String(s).replace(/[&<>"]/g, (c) => "&#" + c.charCodeAt(0) + ";");
+      const sc = (e) => e.f.slice(0, 3); // F1, F2, F3 of a saved vowel
+
+      // LPC: fits a simple model of the vocal tract to the sound (Levinson-Durbin method).
+      function lpc(r, p) {
+        const a = new Array(p + 1).fill(0);
+        a[0] = 1;
+        let e = r[0];
+        for (let i = 1; i <= p; i++) {
+          let k = -r[i];
+          for (let j = 1; j < i; j++) k -= a[j] * r[i - j];
+          k /= e;
+          const t = a.slice();
+          for (let j = 1; j < i; j++) a[j] = t[j] + k * t[i - j];
+          a[i] = k;
+          e *= 1 - k * k;
+        }
+        return a;
+      }
+      // Finds the resonances (roots) of the LPC model by repeated improvement (Durand-Kerner method).
+      function roots(a) {
+        const p = a.length - 1,
+          zr = [],
+          zi = [];
+        let cr = 1,
+          ci = 0;
+        for (let k = 0; k < p; k++) {
+          zr.push(cr);
+          zi.push(ci);
+          const t = cr * 0.4 - ci * 0.9;
+          ci = cr * 0.9 + ci * 0.4;
+          cr = t;
+        }
+        for (let it = 0; it < 60; it++)
+          for (let k = 0; k < p; k++) {
+            let pr = 1,
+              pi = 0;
+            for (let j = 1; j <= p; j++) {
+              const t = pr * zr[k] - pi * zi[k] + a[j];
+              pi = pr * zi[k] + pi * zr[k];
+              pr = t;
+            }
+            let dr = 1,
+              di = 0;
+            for (let m = 0; m < p; m++) {
+              if (m === k) continue;
+              const xr = zr[k] - zr[m],
+                xi = zi[k] - zi[m],
+                t = dr * xr - di * xi;
+              di = dr * xi + di * xr;
+              dr = t;
+            }
+            const den = dr * dr + di * di + 1e-30;
+            zr[k] -= (pr * dr + pi * di) / den;
+            zi[k] -= (pi * dr - pr * di) / den;
+          }
+        return [zr, zi];
+      }
+      // Converts the LPC resonances into formant frequencies. Returns [F1, F2, F3] in Hz, or null.
+      function formants(x, fsr, p) {
+        const n = x.length,
+          r = new Float64Array(p + 1);
+        for (let l = 0; l <= p; l++) {
+          let s = 0;
+          for (let i = l; i < n; i++) s += x[i] * x[i - l];
+          r[l] = s;
+        }
+        if (r[0] < 1e-9) return null;
+        r[0] *= 1.0001;
+        const [zr, zi] = roots(lpc(r, p)),
+          f = [];
+        for (let k = 0; k < p; k++) {
+          if (zi[k] <= 0.01) continue;
+          const m = Math.hypot(zr[k], zi[k]),
+            fr = (Math.atan2(zi[k], zr[k]) * fsr) / (2 * Math.PI),
+            bw = (-Math.log(m) * fsr) / Math.PI;
+          if (fr > 150 && fr < fsr / 2 - 150 && bw > 0 && bw < 450) f.push(fr);
+        }
+        f.sort((u, v) => u - v);
+        return f.length >= 3 ? f.slice(0, 3) : null;
+      }
+      // Pitch (F0) by autocorrelation. Returns 0 when the sound is not clearly voiced.
+      // It takes the FIRST strong peak, which avoids "octave errors" (reporting half the real pitch).
+      function f0(x, fsr) {
+        const n = x.length;
+        const mean = x.reduce((a, b) => a + b, 0) / n;
+        const centered = Array.from(x, (v) => v - mean);
+        const energy = centered.reduce((a, v) => a + v * v, 0);
+        if (energy < 1e-9) return 0;
+        const minLag = Math.floor(fsr / 400); // highest pitch we look for: 400 Hz
+        const maxLag = Math.floor(fsr / 70); //  lowest pitch we look for: 70 Hz
+        const score = [];
+        let best = 0;
+        for (let lag = minLag; lag <= maxLag + 1; lag++) {
+          let sum = 0;
+          for (let i = lag; i < n; i++) sum += centered[i] * centered[i - lag];
+          score[lag] = ((sum / energy) * n) / (n - lag);
+          if (lag <= maxLag && score[lag] > best) best = score[lag];
+        }
+        if (best < SETTINGS.pitchConfidence) return 0;
+        for (let lag = minLag + 1; lag <= maxLag; lag++) {
+          const isPeak = score[lag] >= score[lag - 1] && score[lag] >= score[lag + 1];
+          if (isPeak && score[lag] >= 0.9 * best) return fsr / lag;
+        }
+        return 0;
+      }
+
+      // Median helpers: the middle value is less affected by occasional wrong measurements.
+      const mid = (a) => {
+        const s = a.slice().sort((u, v) => u - v);
+        return s[s.length >> 1];
+      };
+      const med = (A) => [0, 1, 2].map((c) => mid(A.map((v) => v[c])));
+
+      const med4 = (A) => [0, 1, 2, 3].map((c) => mid(A.map((v) => v[c])));
+      // Turns one block of microphone sound into [formants, pitch]. Returns [null, 0] if there is no clear voiced vowel.
+      function proc(b, sr) {
+        const step = sr / fs,
+          n = Math.min(Math.floor(SETTINGS.windowSeconds * fs), Math.floor(2048 / step));
+        const off = 2048 - n * step,
+          x = new Float32Array(n);
+        let energy = 0;
+        for (let j = 0; j < n; j++) {
+          const s = Math.floor(off + j * step),
+            t = Math.max(s + 1, Math.floor(off + (j + 1) * step));
+          let v = 0;
+          for (let q = s; q < t; q++) v += b[q];
+          x[j] = v / (t - s);
+          energy += x[j] * x[j];
+        }
+        if (Math.sqrt(energy / n) < SETTINGS.minLoudness) return [null, 0];
+        const pitch = f0(x, fs);
+        if (!pitch) return [null, 0];
+        for (const [pre, extra] of SETTINGS.attempts) {
+          const w = new Float32Array(n);
+          for (let j = 0; j < n; j++)
+            w[j] = (x[j] - (j ? pre * x[j - 1] : 0)) * (0.54 - 0.46 * Math.cos((2 * Math.PI * j) / (n - 1)));
+          const F = formants(w, fs, Math.round(fs / 1000) + extra);
+          if (F) return [F, pitch];
+        }
+        return [null, pitch];
+      }
+
+      // ============================================================
+      // THE GRAPH
+      // ============================================================
+      function draw() {
+        const S = cv.clientWidth,
+          dpr = devicePixelRatio || 1;
+        if (!S) return;
+        if (cv.width !== Math.round(S * dpr)) cv.width = cv.height = Math.round(S * dpr);
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const css = getComputedStyle(document.documentElement),
+          color = (n) => css.getPropertyValue(n);
+        const fg = color("--fg"),
+          muted = color("--mut"),
+          line = color("--line"),
+          blue = color("--acc"),
+          orange = color("--rnd");
+        const G = SETTINGS.graph,
+          step = G.gridStep;
+        const left = 34,
+          right = 10,
+          top = 10,
+          bottom = 46,
+          W = S - left - right,
+          H = S - top - bottom;
+        const limit = (v, a, b) => Math.min(b, Math.max(a, v));
+        const X = (f2) => left + ((G.f2Max - limit(f2, G.f2Min, G.f2Max)) / (G.f2Max - G.f2Min)) * W; // F2 (Hz) -> pixels, right to left
+        const Y = (f1) => top + ((limit(f1, G.f1Min, G.f1Max) - G.f1Min) / (G.f1Max - G.f1Min)) * H; // F1 (Hz) -> pixels, top to bottom
+        g.clearRect(0, 0, S, S);
+
+        // Grid: a line every 100 Hz both ways, darker every 500 Hz, with the number on every line
+        g.font = "9px system-ui";
+        g.fillStyle = muted;
+        for (let f = Math.ceil(G.f2Min / step) * step; f <= G.f2Max; f += step) {
+          g.strokeStyle = f % 500 === 0 ? muted : line;
+          g.lineWidth = f % 500 === 0 ? 1 : 0.6;
+          g.beginPath();
+          g.moveTo(X(f), top);
+          g.lineTo(X(f), top + H);
+          g.stroke();
+          g.save();
+          g.translate(X(f), top + H + 4);
+          g.rotate(Math.PI / 2); // number written downward under the line
+          g.textAlign = "left";
+          g.textBaseline = "middle";
+          g.fillText(f, 0, 0);
+          g.restore();
+        }
+        for (let f = Math.ceil(G.f1Min / step) * step; f <= G.f1Max; f += step) {
+          g.strokeStyle = f % 500 === 0 ? muted : line;
+          g.lineWidth = f % 500 === 0 ? 1 : 0.6;
+          g.beginPath();
+          g.moveTo(left, Y(f));
+          g.lineTo(left + W, Y(f));
+          g.stroke();
+          g.textAlign = "right";
+          g.textBaseline = "middle";
+          g.fillText(f, left - 4, Y(f));
+        }
+        g.font = "11px system-ui";
+        g.textAlign = "center";
+        g.textBaseline = "alphabetic";
+        g.fillText("F2 in Hz (front vowels left, back vowels right)", left + W / 2, S - 4);
+        g.save();
+        g.translate(9, top + H / 2);
+        g.rotate(-Math.PI / 2);
+        g.fillText("F1 in Hz (high vowels at the top)", 0, 0);
+        g.restore();
+
+        // Textbook averages (faint). Orange = rounded.
+        g.textAlign = "center";
+        g.textBaseline = "middle";
+        g.font = "18px system-ui";
+        g.globalAlpha = 0.4;
+        for (const k in REF) {
+          g.fillStyle = REF[k][2] ? orange : fg;
+          g.fillText(k, X(REF[k][1]), Y(REF[k][0]));
+        }
+        g.globalAlpha = 1;
+
+        // Your saved vowels: a dot at the exact F1 and F2, with the symbol
+        for (const e of LIB) {
+          const s = sc(e),
+            p = [X(s[1]), Y(s[0])];
+          g.fillStyle = isRounded(e.sym) ? orange : fg;
+          g.beginPath();
+          g.arc(p[0], p[1], 3, 0, 7);
+          g.fill();
+          g.font = "bold 18px system-ui";
+          g.textBaseline = "bottom";
+          g.fillText(e.sym, p[0], p[1] - 4);
+          g.textBaseline = "middle";
+        }
+
+        // Rows pasted from Praat: one small gray dot per row
+        g.fillStyle = muted;
+        g.globalAlpha = 0.5;
+        for (const f of PRAAT) {
+          g.beginPath();
+          g.arc(X(f[2]), Y(f[1]), 2, 0, 7);
+          g.fill();
+        }
+        g.globalAlpha = 1;
+
+        // The numbers typed in the form (not saved yet): dashed ring
+        const f1 = parseFloat($("i1").value),
+          f2 = parseFloat($("i2").value);
+        if (f1 && f2) {
+          g.strokeStyle = blue;
+          g.lineWidth = 2;
+          g.setLineDash([4, 3]);
+          g.beginPath();
+          g.arc(X(f2), Y(f1), 10, 0, 7);
+          g.stroke();
+          g.setLineDash([]);
+          g.fillStyle = blue;
+          g.font = "bold 13px system-ui";
+          g.textBaseline = "bottom";
+          g.fillText($("sy").value.trim() || "new", X(f2), Y(f1) - 13);
+          g.textBaseline = "middle";
+        }
+
+        // Your voice right now: a trail, then the dot with lines and numbers on the edges
+        trail.forEach((n, i) => {
+          g.globalAlpha = ((i + 1) / trail.length) * 0.35;
+          g.fillStyle = blue;
+          g.beginPath();
+          g.arc(X(n[1]), Y(n[0]), 3, 0, 7);
+          g.fill();
+        });
+        if (trail.length) {
+          const n = trail[trail.length - 1],
+            x = X(n[1]),
+            y = Y(n[0]);
+          g.globalAlpha = 1;
+          g.strokeStyle = blue;
+          g.lineWidth = 1;
+          g.setLineDash([3, 3]);
+          g.beginPath();
+          g.moveTo(x, y);
+          g.lineTo(left, y);
+          g.moveTo(x, y);
+          g.lineTo(x, top + H);
+          g.stroke();
+          g.setLineDash([]);
+          g.fillStyle = blue;
+          g.beginPath();
+          g.arc(x, y, 6, 0, 7);
+          g.fill();
+          const tag = (text, cx, cy) => {
+            // small blue label with white text
+            g.font = "bold 11px system-ui";
+            const m = g.measureText(text),
+              w = (m ? m.width : text.length * 7) + 8;
+            const lx = limit(cx - w / 2, left + 1, left + W - w - 1);
+            g.fillStyle = blue;
+            g.fillRect(lx, cy - 8, w, 16);
+            g.fillStyle = "#fff";
+            g.textAlign = "left";
+            g.fillText(text, lx + 4, cy);
+            g.textAlign = "center";
+          };
+          tag("F1 " + Math.round(n[0]), left + 30, y);
+          tag("F2 " + Math.round(n[1]), x, top + H - 10);
+        }
+        g.globalAlpha = 1;
+        g.textBaseline = "alphabetic";
+      }
+
+      // ============================================================
+      // WHICH VOWEL, AND ROUNDED OR NOT
+      // ============================================================
+      // How far a sound is from a vowel, in "steps": 1 step is about 60 Hz of F1 or 200 Hz of F2.
+      const steps = (c, f) => Math.hypot((c[0] - f[0]) / 60, (c[1] - f[1]) / 200);
+
+      // The closest vowel. group: true = only rounded vowels, false = only unrounded, null = any.
+      // It uses your saved vowels. Only if you have saved none of that kind does it use the textbook averages.
+      function closest(c, group) {
+        const wanted = (sym) => group === null || isRounded(sym) === group;
+        const options = LIB.filter((e) => wanted(e.sym)).map((e) => ({ sym: e.sym, f: sc(e), who: "yours" }));
+        if (!options.length) for (const k in REF) if (wanted(k)) options.push({ sym: k, f: REF[k], who: "textbook" });
+        let best = null;
+        for (const o of options) {
+          const d = steps(c, o.f);
+          if (!best || d < best.d) best = { sym: o.sym, who: o.who, d: d };
+        }
+        return best;
+      }
+
+      // Your most recently saved vowel with this symbol.
+      function latest(sym) {
+        for (let i = LIB.length - 1; i >= 0; i--) if (LIB[i].sym === sym) return LIB[i];
+        return null;
+      }
+
+      // How rounded is the sound? Needs your saved unrounded vowel AND its rounded partner. See "How the rounding percentage is worked out".
+      function roundingAmount(c, sym) {
+        const base = baseSymbol(sym);
+        if (!base || !PAIR[base]) return null;
+        const a = latest(base),
+          b = latest(PAIR[base]);
+        if (!a || !b) return { missing: PAIR[base] };
+        const rounded = ROUNDED_VOWELS.has(base) ? a : b,
+          unrounded = ROUNDED_VOWELS.has(base) ? b : a;
+        const R = sc(rounded),
+          U = sc(unrounded);
+        if (Math.abs(R[1] - U[1]) < 50 || Math.abs(R[2] - U[2]) < 50) return { missing: PAIR[base] };
+        const t = ((c[1] - U[1]) / (R[1] - U[1]) + (c[2] - U[2]) / (R[2] - U[2])) / 2;
+        return { t: t, u: unrounded.sym, r: rounded.sym };
+      }
+
+      function show() {
+        const c = cur,
+          C = SETTINGS.roundingCuts;
+        $("v0").textContent = Math.round(pitch);
+        for (let i = 1; i < 4; i++) $("v" + i).textContent = Math.round(c[i - 1]);
+        const best = closest(c, null),
+          unr = closest(c, false),
+          rnd = closest(c, true);
+        $("nv").textContent = "[" + best.sym + "]";
+        $("l1").textContent =
+          "Closest vowel: [" +
+          best.sym +
+          "] (" +
+          best.who +
+          "), " +
+          (best.d < 1 ? "very close" : best.d < 2 ? "close" : "far away") +
+          ".";
+        const ratio = Math.max(unr.d, rnd.d) / Math.max(Math.min(unr.d, rnd.d), 0.05);
+        $("l2").textContent =
+          ratio >= 2
+            ? "Looks " +
+              (unr.d < rnd.d ? "unrounded" : "rounded") +
+              " (closest unrounded [" +
+              unr.sym +
+              "], closest rounded [" +
+              rnd.sym +
+              "])."
+            : "Not sure if rounded or not: closest unrounded [" +
+              unr.sym +
+              "] and closest rounded [" +
+              rnd.sym +
+              "] fit about equally.";
+        const r = roundingAmount(c, best.sym);
+        if (!r) $("l3").textContent = "";
+        else if (r.missing)
+          $("l3").textContent = "Save [" + best.sym + "] and [" + r.missing + "] to measure how rounded the sound is.";
+        else {
+          const t = r.t,
+            label =
+              t < C[0]
+                ? "unrounded"
+                : t < C[1]
+                  ? "slightly rounded"
+                  : t < C[2]
+                    ? "partly rounded"
+                    : t < C[3]
+                      ? "fully rounded"
+                      : "over-rounded";
+          const write = t < C[0] ? r.u : t < C[1] ? r.u + "\u0339" : t < C[2] ? r.r + "\u031C" : r.r;
+          $("l3").textContent =
+            "Rounding: " +
+            Math.round(t * 100) +
+            "% (" +
+            label +
+            "), between your [" +
+            r.u +
+            "] at 0% and your [" +
+            r.r +
+            "] at 100%. Write it as [" +
+            write +
+            "].";
+          $("nv").textContent = "[" + write + "]";
+        }
+      }
+
+      // ============================================================
+      // VOLUME BAR AND LIVE LOOP
+      // ============================================================
+      function volume(rms) {
+        const d = rms > 1e-5 ? 20 * Math.log10(rms) : -100;
+        $("lv").style.width = Math.max(0, Math.min(100, ((d + 70) / 70) * 100)) + "%";
+        $("lv").style.background = d < SETTINGS.minDb ? "var(--mut)" : d > -6 ? "var(--rnd)" : "var(--acc)";
+        $("db").textContent = Math.round(Math.max(d, -99)) + " dB";
+        return d >= SETTINGS.minDb; // true when the sound is loud enough to measure
+      }
+
+      function tick() {
+        an.getFloatTimeDomainData(buf);
+        let energy = 0;
+        for (let i = 512; i < 2048; i++) energy += buf[i] * buf[i];
+        const loudEnough = volume(Math.sqrt(energy / 1536));
+        const [F, p] = loudEnough ? proc(buf, ctx.sampleRate) : [null, 0],
+          now = performance.now();
+        if (F) {
+          if (now - lastVoiced > 200) {
+            recent = [];
+            held = [];
+          } // a new sound starts
+          lastVoiced = now;
+          recent.push(F);
+          if (recent.length > SETTINGS.smoothFrames) recent.shift();
+          cur = med(recent);
+          pitch = p;
+          held.push(cur.concat(p));
+          if (held.length > 40) held.shift();
+          trail.push(cur);
+          if (trail.length > SETTINGS.trailLength) trail.shift();
+          show();
+        } else if (now - lastVoiced > 1500) {
+          trail = [];
+          cur = null;
+        }
+        draw();
+      }
+      function loop() {
+        if (!run) return;
+        try {
+          tick();
+        } catch (e) {
+          $("msg").textContent = "Error: " + e.message;
+        }
+        requestAnimationFrame(loop);
+      }
+      $("go").onclick = async () => {
+        if (run) {
+          run = false;
+          stream.getTracks().forEach((t) => t.stop());
+          ctx.close();
+          $("go").textContent = "Start mic";
+          return;
+        }
+        $("go").textContent = "Requesting mic...";
+        $("msg").textContent = "Waiting for microphone permission...";
+        const wait = setTimeout(() => {
+          $("msg").textContent =
+            "No response from the microphone prompt. This viewer probably blocks the mic: open the link in Safari or Chrome.";
+        }, 4000);
+        try {
+          if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
+            throw new Error("mediaDevices not available (needs HTTPS)");
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
+          });
+          clearTimeout(wait);
+          ctx = new AudioContext({ latencyHint: "interactive" });
+          an = ctx.createAnalyser();
+          an.fftSize = 2048;
+          an.smoothingTimeConstant = 0;
+          ctx.createMediaStreamSource(stream).connect(an);
+          buf = new Float32Array(2048);
+          run = true;
+          $("go").textContent = "Stop";
+          $("msg").textContent = "Listening. Say a vowel and hold it.";
+          loop();
+        } catch (e) {
+          clearTimeout(wait);
+          $("go").textContent = "Start mic";
+          $("msg").textContent =
+            "Mic unavailable (" +
+            e.message +
+            "). If this page is embedded, open it in its own tab and allow the microphone.";
+        }
+      };
+      $("ceil").onchange = (e) => {
+        fs = 2 * Number(e.target.value);
+      };
+      $("gate").oninput = (e) => {
+        SETTINGS.minDb = Number(e.target.value);
+        $("gv").textContent = SETTINGS.minDb + " dB";
+        $("gl").style.left = ((SETTINGS.minDb + 70) / 70) * 100 + "%"; // move the line on the volume bar
+        try {
+          localStorage.setItem("vgate", SETTINGS.minDb);
+        } catch (err) {}
+      };
+      try {
+        const saved = localStorage.getItem("vgate");
+        if (saved) $("gate").value = saved;
+      } catch (err) {}
+      $("gate").oninput({ target: $("gate") });
+
+      // ============================================================
+      // SAVING VOWELS
+      // ============================================================
+      function render() {
+        $("lib").innerHTML =
+          LIB.map(
+            (e, i) =>
+              '<div class="item"><b>[' +
+              esc(e.sym) +
+              "]</b><span>" +
+              (e.note ? esc(e.note) + "<br>" : "") +
+              "F1 " +
+              e.f[0] +
+              " F2 " +
+              e.f[1] +
+              " F3 " +
+              e.f[2] +
+              (e.f[3] ? " F4 " + e.f[3] : "") +
+              (e.f[4] ? " F5 " + e.f[4] : "") +
+              (e.f0 ? " F0 " + e.f0 : "") +
+              '</span><button data-d="' +
+              i +
+              '">Delete</button></div>',
+          ).join("") || '<p class="note">Nothing saved yet.</p>';
+      }
+      $("lib").onclick = (e) => {
+        if (e.target.dataset.d === undefined) return;
+        LIB.splice(Number(e.target.dataset.d), 1);
+        store();
+        render();
+        draw();
+      };
+      // Put measured numbers into the form. m = [F1, F2, F3, F0].
+      function fill(m, note) {
+        $("i0").value = Math.round(m[3] || 0) || "";
+        for (let i = 1; i < 4; i++) $("i" + i).value = Math.round(m[i - 1]);
+        $("i4").value = "";
+        $("i5").value = "";
+        if (note !== undefined) $("nt").value = note;
+        draw();
+      }
+      $("cp").onclick = () => {
+        if (held.length < 15) {
+          $("msg").textContent = "Start the mic and hold a vowel steady first.";
+          return;
+        }
+        fill(med4(held.slice(-30)));
+        $("msg").textContent = "Numbers copied into the form. Type the IPA symbol, then Save.";
+      };
+      $("sv").onclick = () => {
+        const sym = $("sy").value.trim();
+        const f = [1, 2, 3, 4, 5].map((i) => parseFloat($("i" + i).value) || null);
+        if (!sym || !f[0] || !f[1] || !f[2]) {
+          $("msg").textContent = "Type a symbol and F1, F2 and F3 first.";
+          return;
+        }
+        LIB.push({ sym: sym, f0: parseFloat($("i0").value) || null, f: f, note: $("nt").value.trim() });
+        store();
+        render();
+        ["sy", "i0", "i1", "i2", "i3", "i4", "i5", "nt"].forEach((id) => ($(id).value = "")); // clear the form
+        PRAAT = [];
+        draw();
+        $("msg").textContent =
+          "Saved [" +
+          sym +
+          "]." +
+          (baseSymbol(sym) ? "" : " (Not an IPA vowel, so it counts as unknown for rounded/unrounded.)");
+      };
+      ["sy", "i1", "i2"].forEach((id) => $(id).addEventListener("input", draw)); // move the dashed ring as you type
+
+      $("ld").onclick = () => $("clip").click();
+      $("clip").onchange = async (e) => {
+        const file = e.target.files[0];
+        e.target.value = "";
+        if (!file) return;
+        try {
+          const ac = new (window.AudioContext || webkitAudioContext)(),
+            audio = await ac.decodeAudioData(await file.arrayBuffer());
+          ac.close();
+          const d = audio.getChannelData(0),
+            sr = audio.sampleRate,
+            rows = [],
+            win = new Float32Array(2048);
+          let peak = 0;
+          for (let i = 0; i < d.length; i++) peak = Math.max(peak, Math.abs(d[i]));
+          const gain = 0.3 / (peak || 1);
+          for (let p = 2048; p < d.length; p += Math.floor(sr / 100)) {
+            for (let j = 0; j < 2048; j++) win[j] = d[p - 2048 + j] * gain;
+            const [F, pp] = proc(win, sr);
+            if (F) rows.push(F.concat(pp));
+          }
+          if (rows.length < 8) throw new Error("no steady voiced vowel found");
+          fill(
+            med4(rows.slice(Math.floor(rows.length * 0.25), Math.ceil(rows.length * 0.75))),
+            file.name.replace(/\.[^.]+$/, ""),
+          );
+          $("msg").textContent = "Measured the middle of " + file.name + ". Type the IPA symbol, then Save.";
+        } catch (err) {
+          $("msg").textContent = "Could not read that file: " + err.message;
+        }
+      };
+      // Paste rows from Praat (Time, F1, F2, F3, F4). The middle value of the rows goes into the form.
+      $("pb").onclick = () => {
+        const rows = [];
+        for (const text of $("pt").value.split(/\\n|\n/)) {
+          const n = (text.match(/-?\d+(?:\.\d+)?/g) || []).map(Number);
+          if (n.length >= 4 && n[1] > 100 && n[1] < 1500 && n[2] > 400 && n[2] < 4000) rows.push(n);
+        }
+        if (!rows.length) {
+          $("msg").textContent = "No rows found. Paste rows like: 4.239 353 2148 2771 3623";
+          return;
+        }
+        PRAAT = rows;
+        [1, 2, 3, 4].forEach((i) => {
+          const values = rows.map((r) => r[i]).filter((v) => v > 0);
+          $("i" + i).value = values.length ? Math.round(mid(values)) : "";
+        });
+        $("i0").value = "";
+        $("i5").value = "";
+        $("nt").value = "Praat";
+        $("msg").textContent =
+          "Read " + rows.length + " row(s); the middle value is in the form. Type the IPA symbol, then Save.";
+        draw();
+      };
+      $("ex").onclick = () => {
+        $("io").value = JSON.stringify(LIB);
+        $("io").select();
+      };
+      $("im").onclick = () => {
+        try {
+          const list = JSON.parse($("io").value);
+          LIB = LIB.concat(list.filter((x) => x && x.sym && Array.isArray(x.f) && x.f.length >= 3));
+          store();
+          render();
+          draw();
+          $("msg").textContent = "Added.";
+        } catch (err) {
+          $("msg").textContent = "Could not read that text: " + err.message;
+        }
+      };
+
+      addEventListener("resize", draw);
+      render();
+      draw();
+    </script>
+  </body>
+</html>
